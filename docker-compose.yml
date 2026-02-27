@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chatdb
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    environment:
+      CHAT_DB_HOST: db
+      CHAT_DB_PORT: 5432
+      CHAT_DB_NAME: chatdb
+      CHAT_DB_USER: chatuser
+      CHAT_DB_PASSWORD: chatpass
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+
+volumes:
+  pgdata:
+
