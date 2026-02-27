@@ -6,29 +6,43 @@ from flask import Flask, jsonify, render_template, request
 
 
 def load_legacy_users(history_path: str) -> list[str]:
-    """Load legacy usernames from the JSONL history file, if present."""
+    """Load founder usernames from history file and/or environment.
+
+    We support two sources of "founder" identities:
+    - a local JSONL history file (used during early development),
+    - the CHAT_FOUNDERS environment variable (preferred in deployments),
+      which should contain a comma-separated list of usernames.
+    """
     users: set[str] = set()
-    if not os.path.exists(history_path):
-        return []
 
-    try:
-        import json
+    # Source 1: legacy JSONL history file (mainly for local development).
+    if os.path.exists(history_path):
+        try:
+            import json
 
-        with open(history_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                username = str(payload.get("username") or "").strip()
-                if username:
-                    users.add(username)
-    except OSError:
-        # If we cannot read the file, fall back to an empty list.
-        return []
+            with open(history_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    username = str(payload.get("username") or "").strip()
+                    if username:
+                        users.add(username)
+        except OSError:
+            # If we cannot read the file, just continue and rely on env-based config.
+            pass
+
+    # Source 2: environment variable CHAT_FOUNDERS="user1,user2,..."
+    env_value = os.getenv("CHAT_FOUNDERS", "")
+    if env_value:
+        for raw in env_value.split(","):
+            name = raw.strip()
+            if name:
+                users.add(name)
 
     return sorted(users)
 
