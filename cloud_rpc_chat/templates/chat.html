@@ -327,10 +327,17 @@
             ? "Founders chat (legacy users only)"
             : "Public chat";
 
+        try {
+          window.localStorage.setItem("rpcChatRoom", currentRoom);
+        } catch (e) {
+          // Ignore storage errors.
+        }
+
         fetchMessages();
       }
 
       async function fetchMessages() {
+        const since = lastId;
         try {
           const params = new URLSearchParams({
             last_id: String(lastId),
@@ -342,11 +349,19 @@
           }
           const data = await resp.json();
           if (Array.isArray(data)) {
+            let maxId = since;
             for (const msg of data) {
-              appendMessage(msg);
-              if (msg.id > lastId) {
-                lastId = msg.id;
+              if (typeof msg.id !== "number" || msg.id <= since) {
+                // Skip messages we have already processed to avoid duplicates.
+                continue;
               }
+              appendMessage(msg);
+              if (msg.id > maxId) {
+                maxId = msg.id;
+              }
+            }
+            if (maxId > lastId) {
+              lastId = maxId;
             }
           }
           statusEl.textContent = "Connected";
@@ -454,7 +469,18 @@
 
       // Start polling loop.
       setInterval(fetchMessages, 1000);
-      fetchMessages();
+
+      // Restore last active room if possible, otherwise default to public.
+      try {
+        const storedRoom = window.localStorage.getItem("rpcChatRoom");
+        if (storedRoom === "founders" && isLegacyUser) {
+          setActiveRoom("founders");
+        } else {
+          setActiveRoom("public");
+        }
+      } catch (e) {
+        setActiveRoom("public");
+      }
     </script>
   </body>
 </html>
