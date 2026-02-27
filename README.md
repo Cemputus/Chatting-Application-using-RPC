@@ -1,97 +1,167 @@
-# Cloud Computing Assignments – Execution Guide
+# Chatting Application using RPC/RMI
 
-This document explains how to **set up the environment** and **execute** the three Cloud Computing assignments shown in the course outline:
+This repository contains a **chat application** that we implemented using **Remote Procedure Calls (RPC)**, backed by a **PostgreSQL** database and exposed through a modern **Flask web UI**.
 
-1. Chatting Application using RPC/RMI  
-2. Web service to calculate the currency exchange rate  
-3. MapReduce application for word indexing in a file  
+The goal of this project is to demonstrate, in a realistic way, how we can:
 
-The instructions are written from the perspective of a data scientist who is comfortable with Python, distributed systems, and command‑line workflows.
+- Use RPC (via Python XML‑RPC) to separate chat logic from clients.
+- Persist chat history in a relational database instead of flat files.
+- Run the whole stack in **Docker** with **docker‑compose**.
+- Provide a slick browser UI with **multiple rooms** (Public vs Founders) and username locking.
 
----
-
-## 1. Prerequisites
-
-- **Operating System**
-  - Windows 10 or later (instructions use PowerShell syntax).
-
-- **Core Software**
-  - **Python**: version 3.9 or later (`python --version`).
-  - **Java Development Kit (JDK)**: version 11 or later (required if you implement RMI‑based chat or Hadoop MapReduce).
-  - **Git**: to clone and version‑control the repository.
-
-- **Python Packages**
-  - Will be installed from `requirements.txt` (if present) using:
-
-    ```powershell
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    ```
-
-- **Optional Distributed Computing Stack**
-  - **Apache Hadoop** or **Apache Spark** (local or cluster) for the MapReduce assignment.
-  - For a pure‑Python local MapReduce prototype, you may also use libraries such as `mrjob` or `pyspark` without a full cluster.
+Throughout this README we use “we” because this project is a joint effort.
 
 ---
 
-## 2. Repository Layout (recommended)
+## Developers
 
-It is recommended to organise this folder as:
+This chat application was designed and implemented by:
 
-- `cloud_rpc_chat/` – RPC/RMI chatting application  
-- `currency_exchange_service/` – REST API or gRPC service for FX rates  
-- `mapreduce_word_index/` – MapReduce / Spark job for word indexing  
-- `requirements.txt` – shared Python dependencies  
-- `README.md` – this file  
-- `start_chat_app.bat` – helper script to launch the chat stack  
+- **GULOBA EMMANUEL EDUBE** – [GitHub profile](https://github.com/Edube20Emmanuel)  
+- **Emmanuel Nsubuga** – [GitHub profile](https://github.com/Cemputus)  
 
-If your structure differs, conceptually map each section below to the corresponding directory in your project.
+We jointly designed the architecture, wrote the code, wired up Docker/Postgres, and produced this documentation.
 
 ---
 
-## 3. Common Environment Setup
+## 1. Project overview
 
-From `Semester 2/Cloud_Computing`:
+The system implements a **distributed chat** where multiple clients talk to a central server over RPC:
+
+- The **chat server** (`cloud_rpc_chat/server.py`) exposes RPC methods and owns all chat logic.
+- A **Flask app** (`cloud_rpc_chat/flask_app.py`) presents an HTTP/JSON and HTML interface on top of the RPC server.
+- A **browser SPA** (`cloud_rpc_chat/templates/chat.html`) provides a modern chat experience with:
+  - Sidebar for **Public** and **Founders** chat rooms.
+  - Username input and **Lock** button.
+  - Scrollable message history with timestamps.
+  - Realtime behaviour using polling.
+- Optionally, we also provide:
+  - A **terminal client** (`cloud_rpc_chat/client.py`).
+  - A **Tkinter GUI client** (`cloud_rpc_chat/gui_client.py`) for desktop tests.
+
+We support two logical chats:
+
+- **Public room** – anyone with the URL can join.
+- **Founders room** – restricted to “founder” usernames, discovered from an original `chat_history.jsonl` file.
+
+All messages for both rooms are stored in a single `chat_messages` table in PostgreSQL.
+
+---
+
+## 2. Repository layout
+
+Key files and directories:
+
+- `cloud_rpc_chat/`
+  - `server.py` – XML‑RPC chat server backed by PostgreSQL.
+  - `client.py` – command‑line chat client.
+  - `gui_client.py` – Tkinter desktop client.
+  - `flask_app.py` – Flask web API and HTML renderer.
+  - `templates/chat.html` – browser UI with sidebar rooms.
+  - `chat_history.jsonl` – legacy history; used to detect “founder” usernames.
+- `Dockerfile` – builds the application image (server + Flask app).
+- `docker-compose.yml` – runs the app and PostgreSQL together.
+- `start_chat_app.bat` – local Windows helper script.
+- `requirements.txt` – Python dependencies.
+- `.gitignore` – ignores `.venv/`, `__pycache__/`, and `chat_history.jsonl`.
+
+---
+
+## 3. Technology stack
+
+- **Language**: Python 3.11+
+- **RPC layer**: `xmlrpc.server` and `xmlrpc.client`
+- **Web framework**: Flask
+- **Database**: PostgreSQL 16 (accessed via `psycopg[binary]`)
+- **Containerisation**: Docker, docker‑compose
+- **Frontend**: HTML/CSS/JavaScript (no heavy frontend framework)
+
+We intentionally kept the stack lean so the focus stays on the RPC model and deployment story.
+
+---
+
+## 4. Local development setup (without Docker)
+
+All commands below assume we are in the project root:
 
 ```powershell
 cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
 ```
 
-### 3.1 Create and activate a virtual environment
+### 4.1 Create and activate a virtual environment
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
-Your PowerShell prompt should show `(.venv)` indicating the environment is active.
+Your prompt should show `(.venv)` after activation.
 
-### 3.2 Install dependencies
-
-If `requirements.txt` exists in this directory:
+### 4.2 Install dependencies
 
 ```powershell
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-For data‑science‑oriented solutions, typical packages might include: `fastapi` or `flask`, `requests`, `pydantic`, `pandas`, `numpy`, `pyspark` or `mrjob`, etc.
+This installs Flask and the PostgreSQL driver (`psycopg[binary]`).
+
+> For non‑Docker development, configure `CHAT_DB_HOST`, `CHAT_DB_PORT`, `CHAT_DB_NAME`, `CHAT_DB_USER`, and `CHAT_DB_PASSWORD` (or pass them to `server.py` via command‑line flags) to point to your Postgres instance.
+
+### 4.3 Run the XML‑RPC server and Flask app manually
+
+1. **Start the chat server**:
+
+   ```powershell
+   cd cloud_rpc_chat
+   python server.py --host 0.0.0.0 --port 9000
+   ```
+
+   Leave this running.
+
+2. **Start the Flask web UI** (in a second PowerShell window):
+
+   ```powershell
+   cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
+   .\.venv\Scripts\Activate.ps1
+   cd cloud_rpc_chat
+
+   python flask_app.py --server_host 127.0.0.1 --server_port 9000 --flask_host 127.0.0.1 --flask_port 5000
+   ```
+
+3. **Open the UI**:
+
+   Visit `http://127.0.0.1:5000/` in your browser, choose a username, click **Lock**, and start chatting.
+
+### 4.4 One‑click script (`start_chat_app.bat`)
+
+On Windows you can use the helper script:
+
+```powershell
+cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
+.\start_chat_app.bat
+```
+
+It will:
+
+- Activate `.venv` (if present).
+- Start `server.py` in one window.
+- Start `flask_app.py` in another.
+- Open your default browser at `http://127.0.0.1:5000/`.
 
 ---
 
-## 3.1 Containerised deployment with Docker (optional but professional)
+## 5. Docker + PostgreSQL deployment
 
-For a production‑style deployment where **anyone with a link can join the conversation**, the chat stack is containerised and uses **PostgreSQL** as a backing store for messages. The recommended setup is a two‑service composition:
+For a more professional deployment, we containerise the stack and run it with `docker-compose`.
 
-- `db`: PostgreSQL instance (official `postgres:16-alpine` image).
-- `app`: this repository, built from the provided `Dockerfile`, running both `server.py` and `flask_app.py`.
-
-From this directory you can build the application image:
+### 5.1 Build the application image
 
 ```powershell
 docker build -t rpc-chat .
 ```
 
-Or, more conveniently, start both the app and the database together using `docker-compose.yml`:
+### 5.2 Start the stack with docker‑compose
 
 ```powershell
 docker compose up --build
@@ -99,319 +169,184 @@ docker compose up --build
 
 This will:
 
-- start a PostgreSQL container seeded with a `chatdb` database,
-- start the chat application container configured to connect to that database,
-- expose the Flask web UI on `http://localhost:5000/`.
-
-To make it publicly reachable, run the same composition on a cloud container platform (e.g. Render, Railway, Google Cloud Run behind a managed Postgres service, or Azure Container Apps with Azure Database for PostgreSQL) and expose port `5000` behind a public URL; all users who open that URL will join the same shared conversation, backed by the Postgres‐persisted chat history.
-
----
-
-## 4. Assignment 1 – RPC/RMI Chatting Application
-
-This assignment implements a **distributed chat system** where multiple clients communicate via a central server using **RPC** (Remote Procedure Call) or **RMI** (Remote Method Invocation).
-
-Assume the implementation lives in `cloud_rpc_chat/` and exposes:
-
-- a **server module**: `server.py` (or `Server.java`)  
-- a **client module**: `client.py` (or `Client.java`)  
-- a **Flask web UI**: `flask_app.py` with template `templates/chat.html`  
-
-### 4.0 High‑level design (implemented version)
-
-- **RPC technology**: Python `xmlrpc.server` and `xmlrpc.client` are used to implement a lightweight RPC layer on top of HTTP.  
-- **Server state**: `server.py` keeps a logical append‑only log of chat messages, each with `(id, username, text, timestamp)`, and **persists them in a PostgreSQL table** (`chat_messages`) so that history survives container restarts and can be scaled or queried independently.  
-- **RPC operations**:
-  - `send_message(username, text) -> id`: validates input, appends a new message, returns its unique ID.
-  - `get_messages(last_id) -> List[Dict]`: returns all messages whose IDs are greater than `last_id`.  
-- **Terminal client** (`client.py`): runs a background polling loop that periodically calls `get_messages`, while the foreground loop sends text typed by the user via `send_message`.  
-- **Flask GUI** (`flask_app.py` + `templates/chat.html`): exposes REST‑style JSON endpoints `/api/messages` (GET/POST) which internally call the XML‑RPC server; a small JavaScript frontend polls and posts to those endpoints to render a live chat window in the browser.
-
-### 4.1 Starting the RPC server (Python XML‑RPC example)
-
-From the project root:
-
-```powershell
-cd cloud_rpc_chat
-python server.py --host 0.0.0.0 --port 9000
-```
-
-Typical server parameters:
-
-- `--host`: interface to bind (use `0.0.0.0` to accept remote connections, `127.0.0.1` for local only).
-- `--port`: TCP port to listen on.
-
-In this **XML‑RPC** implementation, `server.py`:
-
-- creates a `SimpleXMLRPCServer` bound to `host:port`,
-- registers remote procedures such as `send_message(username, text)` and `get_messages(last_id)`,
-- maintains an in‑memory, thread‑safe message log to broadcast messages between connected clients.
-
-Leave this process running in its own terminal.
-
-### 4.2 Running the chat client (Python example)
-
-Open a new PowerShell window, activate the virtual environment, then:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-.venv\Scripts\Activate.ps1
-cd cloud_rpc_chat
-
-python client.py --server_host 127.0.0.1 --server_port 9000 --username Edube
-```
-
-Run another instance with a different `--username` to simulate a second user:
-
-```powershell
-python client.py --server_host 127.0.0.1 --server_port 9000 --username Nsubuga
-```
-
-Under the hood, each client:
-
-- connects to the XML‑RPC endpoint exposed by the server,
-- invokes `send_message` RPCs whenever the user types into the console,
-- continually polls `get_messages` to stream new messages from other users in near real‑time.
-
-### 4.3 Flask web GUI
-
-Instead of the terminal client, a browser‑based GUI is available via Flask.  
-The Flask app exposes two JSON endpoints that act as an HTTP façade over the XML‑RPC server:
-
-- `GET /api/messages?last_id=<int>` → proxies to `get_messages(last_id)` and returns a JSON array of messages.  
-- `POST /api/messages` with body `{"username": "...", "text": "..."}` → proxies to `send_message(username, text)` and returns the new message ID.
-
-The HTML template `templates/chat.html` uses JavaScript to:
-
-- lock in a username (e.g. **Edube**, **Nsubuga**),
-- poll `/api/messages` every second to fetch new messages,
-- send messages using `fetch("/api/messages", { method: "POST", ... })`,
-- render a live chat timeline with timestamps in the browser.
-
-To run the Flask GUI manually:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-cd cloud_rpc_chat
-python server.py --host 0.0.0.0 --port 9000
-```
-
-In a **second** PowerShell window:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-.venv\Scripts\Activate.ps1
-cd cloud_rpc_chat
-python flask_app.py --server_host 127.0.0.1 --server_port 9000 --flask_host 127.0.0.1 --flask_port 5000
-```
-
-Then open `http://127.0.0.1:5000/` in a browser, enter a username, and start chatting.
-
-### 4.4 One‑click startup using `start_chat_app.bat`
-
-For convenience, a Windows batch script orchestrates the full stack:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-start_chat_app.bat
-```
-
-The script will:
-
-- activate `.venv` if present,
-- open one terminal running `server.py` (XML‑RPC chat server with persistent history),
-- open a second terminal running `flask_app.py` (Flask GUI),
-- open your default browser pointing at `http://127.0.0.1:5000/`.
-
-### 4.3 Java RMI variant (if used)
-
-If your implementation uses Java RMI:
-
-1. **Compile sources**:
-
-   ```powershell
-   cd cloud_rpc_chat
-   javac *.java
-   ```
-
-2. **Start the RMI registry**:
-
-   ```powershell
-   start rmiregistry 1099
-   ```
-
-3. **Start the server**:
-
-   ```powershell
-   java ChatServer
-   ```
-
-4. **Run clients**:
-
-   ```powershell
-   java ChatClient Edube
-   java ChatClient Nsubuga
-   ```
-
----
-
-## 5. Assignment 2 – Currency Exchange Rate Web Service
-
-This assignment exposes a **web API** that returns currency exchange rates, typically consumed by other systems or dashboards.
-
-Assume the implementation lives in `currency_exchange_service/` and is built with **FastAPI** (similar steps apply to Flask or Django).
-
-### 5.1 Starting the web service
-
-From the project root:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-.venv\Scripts\Activate.ps1
-cd currency_exchange_service
-
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Where:
-
-- `app:app` refers to `app.py` containing the FastAPI instance `app`.
-- `--reload` enables auto‑reloading during development.
-
-### 5.2 Example API contract
-
-Expose an endpoint such as:
-
-- `GET /fx?base=USD&target=EUR&amount=100`
-
-Expected JSON response (example):
-
-```json
-{
-  "base": "USD",
-  "target": "EUR",
-  "amount": 100.0,
-  "rate": 0.92,
-  "converted_amount": 92.0,
-  "timestamp_utc": "2026-02-27T10:00:00Z",
-  "data_source": "ECB"
-}
-```
-
-### 5.3 Calling the service from the command line
-
-Using `curl`:
-
-```powershell
-curl "http://localhost:8000/fx?base=USD&target=EUR&amount=100"
-```
-
-Using Python (e.g. from a notebook or script):
-
-```python
-import requests
-
-resp = requests.get(
-    "http://localhost:8000/fx",
-    params={"base": "USD", "target": "EUR", "amount": 100},
-    timeout=5,
-)
-resp.raise_for_status()
-data = resp.json()
-print(data)
-```
-
-Behind the scenes, the service can:
-
-- Pull live rates from an external FX API (e.g. ECB, OpenExchangeRates).
-- Cache responses in memory or Redis to reduce latency and external calls.
-- Log full request/response metadata for reproducibility and auditing.
-
----
-
-## 6. Assignment 3 – MapReduce Word Indexing Application
-
-This assignment builds a **MapReduce pipeline** that reads a text corpus and produces an **inverted index**: for each unique word, the list of document IDs (or line numbers) where it appears.
-
-Assume the implementation lives in `mapreduce_word_index/`.
-
-### 6.1 Local execution with PySpark (recommended)
-
-From the project root:
-
-```powershell
-cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-.venv\Scripts\Activate.ps1
-cd mapreduce_word_index
-
-python job_word_index.py --input data/sample_corpus/ --output output/word_index
-```
-
-Typical arguments:
-
-- `--input`: path to a directory containing one or more text files.
-- `--output`: directory where the job writes the inverted index (often as partitioned files).
-
-Inside `job_word_index.py`, a standard PySpark pattern would:
-
-1. Create a `SparkSession`.
-2. Read the input files as an RDD or DataFrame.
-3. **Map**: tokenise lines into `(word, document_id)` key‑value pairs.
-4. **Reduce / groupByKey**: aggregate document IDs per word.
-5. Persist the result back to disk in a columnar or text format.
-
-### 6.2 Hadoop Streaming / mrjob variant
-
-If implemented using Hadoop Streaming or the `mrjob` library:
-
-```powershell
-python word_index_mrjob.py \
-    --input data/sample_corpus/*.txt \
-    --output-dir output/word_index \
-    --no-conf
-```
-
-Where:
-
-- `word_index_mrjob.py` defines a `MRJob` with `mapper`, `combiner`, and `reducer` methods that emit `(word, doc_id)` pairs and aggregate them.
-
-The resulting output typically consists of lines like:
-
-```text
-analytics    ["doc1.txt", "doc3.txt"]
-cloud        ["doc2.txt"]
-pipeline     ["doc1.txt", "doc2.txt", "doc3.txt"]
-```
-
----
-
-## 7. Verification and Testing
-
-- **Unit tests** (if present) can be run from the project root:
-
-  ```powershell
-  cd "C:\Users\CEN\OneDrive\Documents\Data_Science\year3\Semester 2\Cloud_Computing"
-  .venv\Scripts\Activate.ps1
-  pytest
+- Start a `db` service (`postgres:16-alpine`) with:
+  - `POSTGRES_DB=chatdb`
+  - `POSTGRES_USER=chatuser`
+  - `POSTGRES_PASSWORD=chatpass`
+- Start an `app` service built from this repo (`Dockerfile`), configured via:
+
+  ```env
+  CHAT_DB_HOST=db
+  CHAT_DB_PORT=5432
+  CHAT_DB_NAME=chatdb
+  CHAT_DB_USER=chatuser
+  CHAT_DB_PASSWORD=chatpass
   ```
 
-- For each assignment, perform at least:
-  - **Happy‑path tests** (expected input, normal load).
-  - **Edge‑case tests** (invalid messages in chat, unsupported currency pairs, empty files in MapReduce).
-  - **Performance sanity checks** (latency of RPC calls, throughput of FX API, scaling behaviour of MapReduce with larger input).
+- Expose the web UI at `http://localhost:5000/`.
+
+To deploy in the cloud, run the same image on a container platform (Render/Railway/Cloud Run/Azure Container Apps) and connect it to a managed Postgres instance, exposing port `5000` to the internet.
 
 ---
 
-## 8. Reproducibility and Reporting
+## 6. Chat server design (`server.py`)
 
-As a data scientist, document in your project report or notebook:
+### 6.1 Data model
 
-- Exact versions of Python, Java, and external libraries.
-- Configuration parameters used for each run (ports, hosts, batch size, parallelism).
-- Any cloud resources leveraged (e.g. GCP Dataproc, Cloud Run, Kubernetes Engine) and how the local commands map to their cloud‑native equivalents.
+We store messages in a single table:
 
-This README, together with clear code structure, should allow another engineer to **clone the repository, recreate the environment, and execute all three assignments end‑to‑end** with minimal friction.
+- `chat_messages`:
+  - `id SERIAL PRIMARY KEY`
+  - `username TEXT NOT NULL`
+  - `room TEXT NOT NULL DEFAULT 'public'`
+  - `text TEXT NOT NULL`
+  - `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+
+We treat this as an **append‑only log** of events. Each message is associated with a `room`:
+
+- `public` – default room for everyone with the URL.
+- `founders` – reserved for “founder” usernames (derived from `chat_history.jsonl`).
+
+### 6.2 XML‑RPC API
+
+The server exposes two RPC methods over XML‑RPC:
+
+- `send_message(username, text, room='public') -> id`  
+  - Validates `username` and `text` (non‑empty).
+  - Normalises `room` and enforces that it is either `'public'` or `'founders'`.
+  - Inserts a new row into `chat_messages` and returns the new `id`.
+
+- `get_messages(last_id, room='public') -> List[Dict]`  
+  - Interprets `last_id` as an integer, defaulting to `0` if invalid.
+  - Returns all messages where `id > last_id AND room = <room>`, ordered by `id`.
+  - Each message is returned as:
+
+    ```python
+    {
+        "id": int,
+        "username": str,
+        "text": str,
+        "timestamp": float,  # UNIX epoch seconds
+    }
+    ```
+
+### 6.3 Concurrency and schema
+
+On startup, `server.py`:
+
+- Ensures the `chat_messages` table exists.
+- Ensures the `room` column exists and defaults to `'public'`.
+
+Write operations are wrapped in a `threading.Lock` to keep inserts atomic and predictable from the app’s perspective.
+
+---
+
+## 7. Web API and browser client
+
+### 7.1 Flask API (`flask_app.py`)
+
+Flask acts as an HTTP façade over the XML‑RPC server:
+
+- `GET /`  
+  - Renders `templates/chat.html`.
+  - Before rendering, we parse `chat_history.jsonl` (if present) to build a `LEGACY_USERS` list. These are the users allowed into the **Founders** room.
+
+- `GET /api/messages?last_id=<int>&room=<room>`  
+  - Forwards the request to `get_messages(last_id, room)` via XML‑RPC.
+  - Returns a JSON array of messages.
+
+- `POST /api/messages`  
+  - Accepts JSON: `{ "username": "...", "text": "...", "room": "public|founders" }`.
+  - Validates input and forwards to `send_message(username, text, room)`.
+  - Returns `{ "id": <new_id> }` on success.
+
+Flask itself remains stateless; all durable state lives in Postgres.
+
+### 7.2 Browser UI (`templates/chat.html`)
+
+Our front‑end is a single page with:
+
+- A **sidebar** listing:
+  - `Public chat` (always available).
+  - `Founders chat` (enabled only if the locked username is in `LEGACY_USERS`).
+- A **header** with:
+  - Username field.
+  - **Lock** button to confirm identity.
+- A **messages** area:
+  - Scrollable, shows `[HH:MM:SS] username: text`.
+  - Highlights your own messages.
+- A **footer** where users type messages and click **Send** (or press Enter).
+
+Behaviour:
+
+- When you click **Lock**:
+  - Your username is stored in `localStorage` under `rpcChatUsername`.
+  - We check if your name is in `LEGACY_USERS`:
+    - If yes → Founders button becomes enabled.
+    - If no → Founders stays disabled, and clicking it shows an explanatory status message.
+  - The username field and Lock button are disabled to mimic a login.
+
+- When you switch rooms:
+  - `currentRoom` becomes either `public` or `founders`.
+  - We clear the timeline, reset `lastId` to `0`, and fetch history for that room.
+
+- Realtime updates:
+  - Every second we call `GET /api/messages?last_id=<lastId>&room=<currentRoom>`.
+  - We append any new messages and move `lastId` forward.
+  - When we send a message, we optimistically append it locally and set `lastId` to the returned `id` so we don’t render it twice when the polling loop sees it again.
+
+This approach provides a “professional” user experience without the complexity of WebSockets.
+
+---
+
+## 8. Additional clients
+
+Besides the browser, we implemented:
+
+- **Terminal client (`client.py`)**  
+  Useful for quick smoke tests of the RPC API. It:
+  - Connects to the XML‑RPC endpoint.
+  - Starts a background thread to call `get_messages(last_id)` in a loop.
+  - Reads from stdin and calls `send_message(...)` when you type.
+
+- **Tkinter GUI client (`gui_client.py`)**  
+  A small desktop client that uses the same RPC API but draws a native window using Tkinter. It has:
+  - Scrolling text area for messages.
+  - Input box and **Send** button.
+  - A periodic polling loop to keep messages up‑to‑date.
+
+Both are optional, but they helped us validate the backend from multiple angles.
+
+---
+
+## 9. Testing and validation
+
+When we test this project, we focus on:
+
+- **Happy‑path**:
+  - Two or more browser sessions chatting in the Public room.
+  - Two founders chatting in the Founders room with messages not leaking to Public.
+
+- **Persistence**:
+  - Send messages, stop Docker or local processes, restart, and verify history is still present for both rooms.
+
+- **Edge cases**:
+  - Empty username or message (server rejects).
+  - Invalid room values (server and Flask reject).
+  - Database or server downtime: clients surface readable status messages instead of crashing.
+
+Because the XML‑RPC surface is so small (two main methods), it is easy to unit‑test and reason about.
+
+---
+
+## 10. What this project demonstrates
+
+With this Chatting Application using RPC/RMI we show:
+
+- How to design a small but realistic **RPC‑based chat backend**.
+- How to integrate **PostgreSQL** for durable, queryable message storage.
+- How to containerise a Python microservice with **Docker** and **docker‑compose**.
+- How to build a simple but modern **web chat UI** with multi‑room support and a persistent identity model.
+
+Another engineer can clone this repository, run a couple of commands, and get a fully working, Postgres‑backed chat system that they can extend, analyse, or redeploy in their own environment.
 
