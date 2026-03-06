@@ -19,8 +19,19 @@ This chat application was designed and implemented by:
 
 - **GULOBA EMMANUEL EDUBE** – [GitHub profile](https://github.com/Edube20Emmanuel)  
 - **Emmanuel Nsubuga** – [GitHub profile](https://github.com/Cemputus)  
+- **Rugogamu Nooela** – [GitHub profile](https://github.com/RUGOGAMUNOELA)  
 
 We jointly designed the architecture, wrote the code, wired up Docker/Postgres, and produced this documentation.
+
+---
+
+## Live deployment (Render)
+
+We deployed the application on Render. You can access the live instance here:
+
+- **Live URL**: `https://chatting-application-using-rpc.onrender.com/`
+
+Anyone with the link can join the **Public** chat room. The **Founders** room is restricted to founder usernames configured for the deployment.
 
 ---
 
